@@ -45,13 +45,20 @@ Este documento guía paso a paso para configurar la aplicación VANTS Clipper en
 
    **Terms of Service URL:**
    ```
-   https://github.com/VANTSGAMES/VANTS-Clipper/blob/main/LICENSE
+   https://vants.vants.workers.dev/terminos.html
    ```
 
    **Privacy Policy URL:**
    ```
-   https://github.com/VANTSGAMES/VANTS-Clipper/blob/main/LICENSE
+   https://vants.vants.workers.dev/privacidad.html
    ```
+
+   ⚠️ Usa estas URLs exactas — son páginas públicas reales (verificado HTTP 200).
+   No pongas enlaces a este repositorio de GitHub: es privado y TikTok no podrá
+   verlo (rechazaría la revisión).
+
+   **App icon:**
+   Sube `vants-clipper-icon-512.png` (incluido en este repo, 512×512 PNG).
 
    **Platforms:**
    - ✅ Web
@@ -97,22 +104,42 @@ Abre `config.json` en tu editor de texto y actualiza las siguientes líneas:
 
 ## 📦 Agregar productos
 
+La app necesita **DOS productos** (el script usa OAuth de Login Kit + publicación
+con Content Posting API — si falta cualquiera, la autorización falla):
+
 ### 1. Ir a la sección de Products
 
 1. En el menú lateral, haz clic en **Products**
 2. Haz clic en **Add products**
 
-### 2. Seleccionar Content Posting API
+### 2. Seleccionar los dos productos
 
-1. En el diálogo, busca **Content Posting API**
-2. Haz clic en él para seleccionarlo
-3. Haz clic en **Add products**
+1. En el diálogo, busca y selecciona:
+   - ✅ **Login Kit** (necesario para la ventana "Continuar con TikTok")
+   - ✅ **Content Posting API** (necesario para publicar los videos)
+2. Haz clic en **Add products**
 
-### 3. Verificar la configuración
+### 3. Configurar el Redirect URI de Login Kit ⚠️ CRÍTICO
+
+Este es el bloque que más se olvida. **Sin él, el navegador da error al autorizar:**
+
+1. En **Products**, haz clic en **Login Kit** para abrir su configuración
+2. En el campo **Redirect URI**, añade EXACTAMENTE esta URL:
+
+   ```
+   http://localhost:8777/callback
+   ```
+
+   (Debe coincidir carácter por carácter con la que usa `vants_clipper.py`,
+   incluido el puerto `8777` y `/callback`.)
+
+3. Guarda los cambios.
+
+### 4. Verificar la configuración
 
 1. Ve a **Products** en el menú lateral
-2. Verifica que **Content Posting API** esté listado
-3. Haz clic en **Content Posting API** para ver los detalles
+2. Verifica que **Login Kit** y **Content Posting API** estén listados
+3. En Login Kit, verifica que el redirect URI sea `http://localhost:8777/callback`
 
 ## 🔐 Configurar Scopes
 
@@ -160,17 +187,58 @@ Si quieres compartir el acceso con otros usuarios:
 
 ### 4. Explicación de la aplicación
 
-En el campo **Explain how each product and scope works**, escribe:
+En el campo **Explain how each product and scope works**, pega este texto
+(en inglés — los revisores de TikTok lo leen en inglés; debajo está la versión
+en español por si la interfaz la pide):
 
 ```
-VANTS Clipper utiliza el Content Posting API de TikTok Developers para publicar videos automáticamente. La aplicación detecta clips nuevos de Razer Cortex, graba directos de Kick, detecta picos de hype en el chat y permite marcar momentos destacados con !clip. Los clips se convierten a formato vertical 9:16 y se publican automáticamente en YouTube Shorts, TikTok e Instagram Reels.
+VANTS Clipper is a desktop tool used by our own team to automatically clip the
+best moments of our live streams (Kick) and gameplay sessions (Razer Cortex),
+convert them to vertical 9:16 format, and post them to our own TikTok account.
 
-La aplicación utiliza los siguientes scopes:
-- user.info.basic: Para obtener información básica del usuario que publica el video
-- video.publish: Para publicar videos en TikTok
+Products and scopes:
+- Login Kit (user.info.basic): used only to authenticate the single TikTok
+  account owned by our organization and to display the account's display name
+  in our app's status screen after connecting.
+- Content Posting API (video.publish): used to upload the generated clips
+  directly to our own account. While the app is unaudited we post with
+  privacy_level SELF_ONLY only; public posting is only enabled after this
+  review is approved.
 
-La aplicación solo publica videos que el usuario marca explícitamente o que se generan automáticamente basándose en picos de actividad en el chat. No realiza ninguna publicación sin la intervención del usuario.
+The app does not collect, store or share any end-user data: it authenticates
+one account controlled by our organization, uploads videos we created
+ourselves, and nothing else. There are no other users of this app.
 ```
+
+Versión en español (por si la necesitas):
+
+```
+VANTS Clipper es una herramienta de escritorio usada por nuestro propio equipo
+para recortar automáticamente los mejores momentos de nuestros directos (Kick)
+y partidas (Razer Cortex), convertirlos a formato vertical 9:16 y publicarlos
+en nuestra propia cuenta de TikTok.
+
+Productos y scopes:
+- Login Kit (user.info.basic): solo para autenticar la única cuenta de TikTok
+  de nuestra organización y mostrar su nombre en la pantalla de estado de la app.
+- Content Posting API (video.publish): para subir los clips generados
+  directamente a nuestra propia cuenta. Mientras la app no está auditada
+  publicamos solo con privacy_level SELF_ONLY; la publicación pública se
+  activa tras la aprobación de esta revisión.
+
+La app no recoge, almacena ni comparte datos de usuarios finales: autentica
+una cuenta controlada por nuestra organización y sube videos creados por
+nosotros. No tiene otros usuarios.
+```
+
+### 4b. Guion del demo video
+
+Graba 60–90 s mostrando, en este orden:
+1. El agente detectando un clip nuevo (carpeta de Razer Cortex o directo de Kick)
+2. El clip convertiéndose a vertical 9:16
+3. La ventana "Continuar con TikTok" (OAuth) y el permiso concedido
+4. El clip apareciendo en tu perfil de TikTok como **privado (solo tú)**
+5. `config.json` con `privacidad: "SELF_ONLY"` en pantalla
 
 ### 5. Subir demo video (opcional)
 
@@ -198,6 +266,18 @@ Si tu aplicación no ha sido aprobada antes, debes subir un demo video:
 2. Haz clic en **Credentials**
 3. Verifica que el **Client Key** y **Client Secret** estén visibles
 4. Verifica que la aplicación esté en el entorno **Production** (no Sandbox)
+5. **Products**: Login Kit + Content Posting API añadidos
+6. **Login Kit**: redirect URI `http://localhost:8777/callback` guardado
+7. **Scopes**: `user.info.basic` + `video.publish` solicitados
+8. **App review**: explicación pegada + icono 512×512 subido + demo video subido
+9. Pulsa **Submit for review**
+
+Datos ya verificados (2026-10-31):
+- App ID: `7702764230904023061`
+- Organización: `7702803050838262804`
+- Credenciales en `config.json` probadas contra el endpoint de tokens (HTTP 200)
+- Mientras la app esté en *pending*, los videos se publican **privados
+  (SELF_ONLY)** — ya está configurado así en `config.json`
 
 ### 2. Probar la conexión
 
