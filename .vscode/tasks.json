@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "VANTS Clipper: Chequeo (Razer Cortex + VALORANT + YouTube + vidIQ)",
+      "type": "shell",
+      "command": "python",
+      "args": ["vants_clipper.py", "--chequeo"],
+      "problemMatcher": []
+    },
+    {
+      "label": "VANTS Clipper: Vigilar clips de Razer Cortex",
+      "type": "shell",
+      "command": "python",
+      "args": ["vants_clipper.py"],
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "VANTS Clipper: Lanzar VALORANT + Vigilar clips",
+      "type": "shell",
+      "command": "python",
+      "args": ["vants_clipper.py", "--launch-valorant"],
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Instalar dependencias Python",
+      "type": "shell",
+      "command": "pip",
+      "args": ["install", "-r", "requirements.txt"],
+      "problemMatcher": []
+    }
+  ]
+}
