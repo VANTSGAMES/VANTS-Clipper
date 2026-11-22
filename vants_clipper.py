@@ -379,6 +379,34 @@ def publicar_en_vants(url_youtube: str, titulo: str, juego: str) -> bool:
     return False
 
 
+def notificar_vantsbot(url_youtube: str, titulo: str, juego: str, seo_source: str, cfg: dict[str, Any]) -> bool:
+    """Publica el evento clip.published a través del motor Cloudflare vantsbot -> VANTS-BUS -> Discord."""
+    if not requests or not url_youtube:
+        return False
+    bot_url = str(os.environ.get("VANTSBOT_URL") or cfg.get("vantsbot_url") or "https://vantsbot.vants.workers.dev").rstrip("/")
+    secret = (os.environ.get("VANTS_BOT_SECRET") or os.environ.get("CLIPPER_SECRET") or str(cfg.get("clipper_secret") or "")).strip()
+    if not secret:
+        return False
+    headers = {"Content-Type": "application/json"}
+    if os.environ.get("VANTS_BOT_SECRET"):
+        headers["x-vants-bot"] = secret
+    else:
+        headers["x-clipper-secret"] = secret
+    try:
+        r = requests.post(
+            f"{bot_url}/banter/clipper",
+            headers=headers,
+            json={"title": titulo[:140], "url": url_youtube, "juego": juego, "seoSource": seo_source},
+            timeout=10,
+        )
+        if r.ok:
+            print("[vantsbot] Clip anunciado al VANTS-BUS (Discord)")
+            return True
+    except Exception as e:
+        print(f"[vantsbot] Aviso omitido ({e})")
+    return False
+
+
 def huella_archivo(path: Path) -> str:
     st = path.stat()
     raw = f"{path.name}|{st.st_size}|{int(st.st_mtime)}"
@@ -405,6 +433,7 @@ def procesar_clip(origen: Path, cfg: dict[str, Any], estado: dict[str, Any]) -> 
     yt_url = subir_youtube_short(salida, seo, cfg)
     if yt_url:
         publicar_en_vants(yt_url, seo["title"], juego)
+        notificar_vantsbot(yt_url, seo["title"], juego, seo["source"], cfg)
 
     estado["procesados"][fid] = {
         "archivo": str(origen),

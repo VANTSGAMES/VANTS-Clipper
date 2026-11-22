@@ -1,0 +1,136 @@
+name: Release Windows + WinGet (VANTSGAMES.VANTSClipper)
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versión semántica a publicar (ej. 1.0.0)"
+        required: true
+        default: "1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolver versión
+        id: ver
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $v = "${{ inputs.version }}".TrimStart("v")
+          } else {
+            $v = "${{ github.ref_name }}".TrimStart("v")
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "tag=v$v" >> $env:GITHUB_OUTPUT
+
+      - name: Instalar dependencias y PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+          python -m py_compile vants_clipper.py
+
+      - name: Compilar VANTS-Clipper.exe con PyInstaller
+        run: |
+          pyinstaller --onefile --name VANTS-Clipper --console vants_clipper.py
+
+      - name: Empaquetar instalador silencioso con Inno Setup
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            choco install innosetup -y
+          }
+          & $iscc "/DMyAppVersion=$v" "packaging\vants-clipper.iss"
+
+      - name: Calcular SHA-256 y generar manifiestos WinGet (VANTSGAMES.VANTSClipper)
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          $tag = "${{ steps.ver.outputs.tag }}"
+          $exe = "release/VANTS-Clipper-Setup-$v.exe"
+          if (!(Test-Path $exe)) { throw "No se generó $exe" }
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToUpper()
+          "$hash  VANTS-Clipper-Setup-$v.exe" | Out-File -Encoding utf8 "release/SHA256SUMS.txt"
+
+          $outDir = "release/winget"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          $url = "https://github.com/VANTSGAMES/VANTS-Clipper/releases/download/$tag/VANTS-Clipper-Setup-$v.exe"
+
+          @"
+          PackageIdentifier: VANTSGAMES.VANTSClipper
+          PackageVersion: $v
+          DefaultLocale: en-US
+          ManifestType: version
+          ManifestVersion: 1.9.0
+          "@ | Out-File -Encoding utf8 "$outDir/VANTSGAMES.VANTSClipper.yaml"
+
+          @"
+          PackageIdentifier: VANTSGAMES.VANTSClipper
+          PackageVersion: $v
+          InstallerType: inno
+          Scope: user
+          InstallModes:
+            - interactive
+            - silent
+          UpgradeBehavior: install
+          Installers:
+            - Architecture: x64
+              InstallerUrl: $url
+              InstallerSha256: $hash
+          ManifestType: installer
+          ManifestVersion: 1.9.0
+          "@ | Out-File -Encoding utf8 "$outDir/VANTSGAMES.VANTSClipper.installer.yaml"
+
+          @"
+          PackageIdentifier: VANTSGAMES.VANTSClipper
+          PackageVersion: $v
+          PackageLocale: en-US
+          Publisher: VANTS GAMES
+          PublisherUrl: https://vants.cc
+          PublisherSupportUrl: https://github.com/VANTSGAMES/VANTS-Clipper/issues
+          PrivacyUrl: https://vants.cc/privacidad
+          PackageName: VANTS Clipper
+          PackageUrl: https://github.com/VANTSGAMES/VANTS-Clipper
+          License: MIT
+          ShortDescription: Automatic Razer Cortex & VALORANT clip agent with 9:16 Shorts conversion, vidIQ SEO, and YouTube upload.
+          Tags:
+            - gaming
+            - valorant
+            - razer-cortex
+            - youtube-shorts
+            - vants
+          ManifestType: defaultLocale
+          ManifestVersion: 1.9.0
+          "@ | Out-File -Encoding utf8 "$outDir/VANTSGAMES.VANTSClipper.locale.en-US.yaml"
+
+      - name: Publicar en GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: VANTS Clipper ${{ steps.ver.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            release/VANTS-Clipper-Setup-*.exe
+            release/SHA256SUMS.txt
+            release/winget/*.yaml
+
+      - name: Enviar actualización automática a microsoft/winget-pkgs (si existe WINGET_GITHUB_TOKEN)
+        if: ${{ secrets.WINGET_GITHUB_TOKEN != '' }}
+        uses: vedantmgoyal9/winget-releaser@main
+        with:
+          identifier: VANTSGAMES.VANTSClipper
+          token: ${{ secrets.WINGET_GITHUB_TOKEN }}
+          installers-regex: 'VANTS-Clipper-Setup-.*\.exe$'
