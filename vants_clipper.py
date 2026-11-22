@@ -32,7 +32,7 @@ try:
 except ImportError:
     requests = None
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 GITHUB_RELEASES_API = "https://api.github.com/repos/VANTSGAMES/VANTS-Clipper/releases/latest"
 
 BASE_DIR = Path(__file__).resolve().parent
