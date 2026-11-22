@@ -1,0 +1,10 @@
+yt_client_secret.json
+yt_token.json
+tiktok_token.json
+estado.json
+.env
+*.log
+__pycache__/
+clips_originales/
+clips_verticales/
+grabaciones/

@@ -6,10 +6,19 @@
   "cortex_clip_dir": "C:\\Users\\feisp\\AppData\\Local\\Razer\\Razer Cortex\\GameClips\\feispla\\Videos\\VALORANT",
   "juego_default": "Valorant",
   "titulo_template": "{clip} · {juego} 🔥 #VANTS",
-  "descripcion": "🎮 {juego} en directo en kick.com/feispla\n💜 Únete a VANTS: https://vants.vants.workers.dev\n\n#shorts #valorant #kick #gaming #vants",
-  "duracion_max": 177,
+  "descripcion": "🎮 {juego} en directo en kick.com/feispla\n🏆 Únete a VANTS GAMES: https://vants.cc\n\n#shorts #valorant #kick #gaming #vants",
+  "duracion_max": 59,
   "marca_texto": "",
   "marca_fuente": "",
+  "vidiq": {
+    "activo": true,
+    "env_token": "VIDIQ_MCP_TOKEN"
+  },
+  "valorant": {
+    "lanzar_con_clipper": false,
+    "riot_client_path": "",
+    "args": ["--launch-product=valorant", "--launch-patchline=live"]
+  },
   "spike": { "umbral_min": 6, "multiplicador": 2.5, "cooldown_seg": 90 },
   "plataformas": {
     "youtube": { "activo": true, "client_secrets": "yt_client_secret.json", "token": "yt_token.json", "privacidad": "public" },
