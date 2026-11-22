@@ -127,8 +127,20 @@ jobs:
             release/SHA256SUMS.txt
             release/winget/*.yaml
 
+      - name: Comprobar token WinGet
+        id: winget_check
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINGET_TOKEN)) {
+            "enabled=false" >> $env:GITHUB_OUTPUT
+          } else {
+            "enabled=true" >> $env:GITHUB_OUTPUT
+          }
+
       - name: Enviar actualización automática a microsoft/winget-pkgs (si existe WINGET_GITHUB_TOKEN)
-        if: ${{ secrets.WINGET_GITHUB_TOKEN != '' }}
+        if: steps.winget_check.outputs.enabled == 'true'
         uses: vedantmgoyal9/winget-releaser@main
         with:
           identifier: VANTSGAMES.VANTSClipper
