@@ -628,22 +628,21 @@ def ejecutar_chequeo(cfg: dict[str, Any]) -> int:
     if carpetas:
         for c in carpetas:
             clips = [p for p in c.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXTS]
-            print(f"Razer Cortex:    OK -> {c} ({len(clips)} clips encontrados)")
+            print(f"Carpeta clips:   OK -> {c} ({len(clips)} clips encontrados)")
     else:
-        print(f"Razer Cortex:    NO ENCONTRADA (configurado: {cfg.get('cortex_clip_dir')})")
+        print(f"Carpeta clips:   NO ENCONTRADA (configurado: {cfg.get('cortex_clip_dir')})")
     riot = localizar_riot_client(cfg)
     print(f"VALORANT (Riot): {riot or 'No detectado automáticamente'} ({' '.join(RIOT_LAUNCH_ARGS)})")
     yt_sec = BASE_DIR / str(((cfg.get("plataformas") or {}).get("youtube") or {}).get("client_secrets") or "yt_client_secret.json")
     print(f"YouTube OAuth:   {'OK (' + yt_sec.name + ')' if yt_sec.exists() else 'Falta ' + yt_sec.name}")
-    vidiq_env = str((cfg.get("vidiq") or {}).get("env_token") or "VIDIQ_MCP_TOKEN")
-    print(f"vidIQ MCP Token: {'Configurado en env ' + vidiq_env if os.environ.get(vidiq_env) else 'Usará proxy diario de membresía VANTS o SEO local'}")
+    print("Motor VANTS IA:  Proxy diario por membresía VANTS (con fallback SEO VANTS básico)")
     cuota = consultar_cuota_vants(cfg)
     if cuota:
         s = cuota.get("shorts") or {}
-        v = cuota.get("vidiq") or {}
-        print(f"Plan VANTS hoy:  {cuota.get('label')} · Shorts {s.get('usados', 0)}/{s.get('limite', 0)} · vidIQ {v.get('usados', 0)}/{v.get('limite', 0)}")
+        v = cuota.get("creditosVants") or cuota.get("vidiq") or {}
+        print(f"Plan VANTS hoy:  {cuota.get('label')} · Shorts {s.get('usados', 0)}/{s.get('limite', 0)} · Créditos VANTS {v.get('usados', 0)}/{v.get('limite', 0)}")
     else:
-        print("Plan VANTS hoy:  Sin VANTS_API_TOKEN (define VANTS_API_TOKEN para activar tu cupo diario de membresía)")
+        print("Plan VANTS hoy:  Sin VANTS_API_TOKEN (define VANTS_API_TOKEN para activar tus Créditos VANTS diarios)")
     upd = comprobar_actualizacion(cfg, auto_instalar=False)
     print(f"Auto-update:     v{upd['actual']} (última en GitHub: v{upd['ultima']})")
     return 0
@@ -653,10 +652,10 @@ def vigilar_cortex(cfg: dict[str, Any]) -> None:
     estado = cargar_estado()
     carpetas = detectar_carpetas_cortex(cfg)
     if not carpetas:
-        print("[Cortex] No se encontró ninguna carpeta de Razer Cortex todavía. Revisaré cada 10s...")
+        print("[VANTS Clipper] No se encontró ninguna carpeta de clips todavía. Revisaré cada 5s...")
     else:
         for c in carpetas:
-            print(f"[Cortex] Vigilando carpeta: {c}")
+            print(f"[VANTS Clipper] Vigilando carpeta: {c}")
 
     print(f"[VANTS Clipper v{APP_VERSION}] Agente activo. Presiona Ctrl+C para detener.")
     try:
