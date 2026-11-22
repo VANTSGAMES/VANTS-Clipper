@@ -10,6 +10,9 @@
   "duracion_max": 59,
   "marca_texto": "",
   "marca_fuente": "",
+  "auto_update": true,
+  "carpetas_extra": [],
+  "vants_integraciones_url": "https://vants-integraciones.vants.workers.dev",
   "vidiq": {
     "activo": true,
     "env_token": "VIDIQ_MCP_TOKEN"

@@ -22,6 +22,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,9 @@ try:
     import requests
 except ImportError:
     requests = None
+
+APP_VERSION = "1.1.0"
+GITHUB_RELEASES_API = "https://api.github.com/repos/VANTSGAMES/VANTS-Clipper/releases/latest"
 
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "config.json"
@@ -47,6 +51,77 @@ YOUTUBE_SCOPES = [
 ]
 
 RIOT_LAUNCH_ARGS = ["--launch-product=valorant", "--launch-patchline=live"]
+
+
+def version_a_tupla(ver: str) -> tuple[int, ...]:
+    nums = re.findall(r"\d+", str(ver or "0"))
+    return tuple(int(n) for n in nums[:4]) if nums else (0,)
+
+
+def comprobar_actualizacion(cfg: dict[str, Any], auto_instalar: bool = True) -> dict[str, Any]:
+    """Comprueba si existe una nueva versión en GitHub Releases y la instala en Windows si procede."""
+    info: dict[str, Any] = {"actual": APP_VERSION, "ultima": APP_VERSION, "hay_update": False, "instalada": False}
+    if not requests or not cfg.get("auto_update", True):
+        return info
+    try:
+        r = requests.get(GITHUB_RELEASES_API, headers={"Accept": "application/vnd.github+json"}, timeout=8)
+        if not r.ok:
+            return info
+        rel = r.json()
+        tag = str(rel.get("tag_name") or "").lstrip("v").strip()
+        if not tag:
+            return info
+        info["ultima"] = tag
+        info["url"] = rel.get("html_url") or "https://github.com/VANTSGAMES/VANTS-Clipper/releases/latest"
+        if version_a_tupla(tag) <= version_a_tupla(APP_VERSION):
+            return info
+
+        info["hay_update"] = True
+        print(f"[Update] Nueva versión disponible: v{tag} (actual: v{APP_VERSION})")
+        if not auto_instalar or os.name != "nt":
+            print(f"[Update] Descarga manual: {info['url']}")
+            return info
+
+        assets = rel.get("assets") or []
+        exe_asset = next((a for a in assets if str(a.get("name", "")).endswith(".exe")), None)
+        sha_asset = next((a for a in assets if str(a.get("name", "")) == "SHA256SUMS.txt"), None)
+        if not exe_asset or not exe_asset.get("browser_download_url"):
+            return info
+
+        tmp_dir = Path(tempfile.gettempdir()) / "vants-clipper-update"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        exe_path = tmp_dir / str(exe_asset["name"])
+        print(f"[Update] Descargando {exe_asset['name']}...")
+        with requests.get(exe_asset["browser_download_url"], stream=True, timeout=60) as dl:
+            dl.raise_for_status()
+            with exe_path.open("wb") as f:
+                for chunk in dl.iter_content(chunk_size=1024 * 256):
+                    if chunk:
+                        f.write(chunk)
+
+        if sha_asset and sha_asset.get("browser_download_url"):
+            sha_txt = requests.get(sha_asset["browser_download_url"], timeout=15).text
+            expected = None
+            for line in sha_txt.splitlines():
+                if exe_asset["name"] in line:
+                    expected = line.strip().split()[0].upper()
+                    break
+            if expected:
+                actual_hash = hashlib.sha256(exe_path.read_bytes()).hexdigest().upper()
+                if actual_hash != expected:
+                    print("[Update] Hash SHA-256 no coincide; instalación abortada por seguridad.")
+                    return info
+
+        print("[Update] Instalando nueva versión en segundo plano...")
+        subprocess.Popen(
+            [str(exe_path), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        info["instalada"] = True
+    except Exception as e:
+        print(f"[Update] Comprobación omitida ({e})")
+    return info
 
 
 def cargar_config() -> dict[str, Any]:
@@ -69,13 +144,20 @@ def guardar_estado(estado: dict[str, Any]) -> None:
 
 
 def detectar_carpetas_cortex(cfg: dict[str, Any]) -> list[Path]:
-    """Devuelve las carpetas válidas de clips de Razer Cortex en Windows."""
+    """Devuelve las carpetas válidas de clips de Razer Cortex (y carpetas extra como OBS/ShadowPlay)."""
     candidatos: list[Path] = []
     dir_cfg = str(cfg.get("cortex_clip_dir") or "").strip()
     if dir_cfg:
         p = Path(os.path.expandvars(dir_cfg)).expanduser()
         if p.exists():
             candidatos.append(p)
+
+    for extra in cfg.get("carpetas_extra") or []:
+        s = str(extra or "").strip()
+        if s:
+            pe = Path(os.path.expandvars(s)).expanduser()
+            if pe.is_dir() and pe not in candidatos:
+                candidatos.append(pe)
 
     local_app = os.environ.get("LOCALAPPDATA") or ""
     if local_app:
@@ -218,8 +300,60 @@ def parse_mcp_sse_json(raw_text: str) -> dict[str, Any] | None:
     return None
 
 
+def vants_int_url(cfg: dict[str, Any]) -> str:
+    return str(os.environ.get("VANTS_INT_URL") or cfg.get("vants_integraciones_url") or VANTS_INT_URL).rstrip("/")
+
+
+def headers_vants_auth(cfg: dict[str, Any]) -> dict[str, str]:
+    token = (os.environ.get("VANTS_API_TOKEN") or "").strip()
+    if token:
+        return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    clipper_secret = (os.environ.get("CLIPPER_SECRET") or "").strip()
+    if clipper_secret:
+        return {"x-clipper-secret": clipper_secret, "Content-Type": "application/json"}
+    return {}
+
+
+def consultar_cuota_vants(cfg: dict[str, Any]) -> dict[str, Any] | None:
+    """Consulta el plan activo y los cupos diarios (Shorts/día + vidIQ/día) en vants-integraciones."""
+    headers = headers_vants_auth(cfg)
+    if not headers or not requests:
+        return None
+    try:
+        r = requests.get(f"{vants_int_url(cfg)}/clips/cuota", headers=headers, timeout=10)
+        if r.ok:
+            data = r.json()
+            if data.get("ok"):
+                return data
+    except Exception as e:
+        print(f"[VANTS] No se pudo consultar tu cuota diaria ({e})")
+    return None
+
+
+def consumir_short_vants(cfg: dict[str, Any]) -> tuple[bool, str, dict[str, Any] | None]:
+    """Valida y descuenta 1 Short automático del cupo diario del miembro.
+
+    Si el usuario solo corre en modo propietario local sin VANTS_API_TOKEN, permite continuar.
+    """
+    if not (os.environ.get("VANTS_API_TOKEN") or "").strip():
+        return True, "modo_local_propietario", None
+    headers = headers_vants_auth(cfg)
+    if not requests:
+        return True, "sin_requests", None
+    try:
+        r = requests.post(f"{vants_int_url(cfg)}/clips/cuota/consumir-short", headers=headers, timeout=10)
+        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if r.ok and data.get("ok"):
+            return True, "ok", data.get("quota")
+        err = str(data.get("error") or f"http_{r.status_code}")
+        detalle = str(data.get("detalle") or "No tienes cupo de subida automática disponible hoy.")
+        return False, f"{err}: {detalle}", data.get("quota")
+    except Exception as e:
+        return False, f"error_red: {e}", None
+
+
 def optimizar_con_vidiq(titulo_base: str, juego: str, cfg: dict[str, Any]) -> dict[str, Any]:
-    """Consulta vidIQ MCP (vía VIDIQ_MCP_TOKEN en entorno) o genera metadatos SEO locales."""
+    """Optimiza título/tags vía vants-integraciones (cuota diaria del plan) o vidIQ MCP local, con fallback SEO gratis."""
     tags_default = [juego.lower(), f"{juego.lower()} shorts", f"{juego.lower()} clips", "gaming", "esports", "vants games", "shorts"]
     plantilla_titulo = str(cfg.get("titulo_template") or "{clip} · {juego} 🔥 #VANTS")
     plantilla_desc = str(
@@ -237,6 +371,35 @@ def optimizar_con_vidiq(titulo_base: str, juego: str, cfg: dict[str, Any]) -> di
     if not vidiq_cfg.get("activo", True) or not requests:
         return fallback
 
+    # 1) Preferido para miembros: proxy seguro en vants-integraciones (respeta cupo diario del plan + tope global)
+    vants_headers = headers_vants_auth(cfg)
+    if vants_headers:
+        try:
+            r = requests.post(
+                f"{vants_int_url(cfg)}/clips/seo",
+                headers=vants_headers,
+                json={"titulo": titulo_base[:160], "juego": juego[:40], "formato": "short"},
+                timeout=15,
+            )
+            if r.ok:
+                data = r.json()
+                if data.get("ok") and data.get("recommendedTitle"):
+                    src = str(data.get("source") or "vants_seo")
+                    reason = data.get("vidiqReason")
+                    if reason:
+                        print(f"[SEO] {src} ({reason})")
+                    else:
+                        print(f"[SEO] {src}: {data['recommendedTitle']}")
+                    return {
+                        "source": src,
+                        "title": str(data["recommendedTitle"])[:98],
+                        "description": str(data.get("description") or fallback["description"]),
+                        "tags": list(data.get("tags") or tags_default),
+                    }
+        except Exception as e:
+            print(f"[SEO] Fallback local tras fallo de vants-integraciones ({e})")
+
+    # 2) Fallback directo para el dueño si tiene VIDIQ_MCP_TOKEN en su propio PC
     env_name = str(vidiq_cfg.get("env_token") or "VIDIQ_MCP_TOKEN")
     token = (os.environ.get(env_name) or "").strip()
     if not token:
@@ -358,15 +521,16 @@ def subir_youtube_short(video_path: Path, seo: dict[str, Any], cfg: dict[str, An
     return url
 
 
-def publicar_en_vants(url_youtube: str, titulo: str, juego: str) -> bool:
+def publicar_en_vants(url_youtube: str, titulo: str, juego: str, cfg: dict[str, Any] | None = None) -> bool:
     """Opcional: registra el enlace del Short en https://vants.cc/clips si VANTS_API_TOKEN está definido."""
     token = (os.environ.get("VANTS_API_TOKEN") or "").strip()
     if not token or not requests or not url_youtube:
         return False
     slug = re.sub(r"[^a-z0-9]", "", juego.lower()) or "valorant"
+    base_url = vants_int_url(cfg or {})
     try:
         r = requests.post(
-            f"{VANTS_INT_URL}/clips",
+            f"{base_url}/clips",
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             json={"url": url_youtube, "titulo": titulo[:100], "juego": slug, "publico": True},
             timeout=12,
@@ -429,11 +593,19 @@ def procesar_clip(origen: Path, cfg: dict[str, Any], estado: dict[str, Any]) -> 
     convertir_vertical_9_16(origen, salida, duracion_max=dur_max)
     print(f"[FFmpeg] Convertido a 9:16 -> {salida.name}")
 
+    permitido, motivo_cuota, cuota_info = consumir_short_vants(cfg)
     seo = optimizar_con_vidiq(titulo_limpio, juego, cfg)
-    yt_url = subir_youtube_short(salida, seo, cfg)
-    if yt_url:
-        publicar_en_vants(yt_url, seo["title"], juego)
-        notificar_vantsbot(yt_url, seo["title"], juego, seo["source"], cfg)
+    yt_url = None
+    if permitido:
+        yt_url = subir_youtube_short(salida, seo, cfg)
+        if yt_url:
+            publicar_en_vants(yt_url, seo["title"], juego, cfg)
+            if not cuota_info or cuota_info.get("autoDiscord", True):
+                notificar_vantsbot(yt_url, seo["title"], juego, seo["source"], cfg)
+    else:
+        print(f"[Cuota VANTS] Subida automática omitida ({motivo_cuota}).")
+        print(f"[Cuota VANTS] Tu clip 9:16 quedó guardado gratis en: {salida}")
+        print("[Cuota VANTS] Activa o mejora tu plan en https://vants.cc/membresias")
 
     estado["procesados"][fid] = {
         "archivo": str(origen),
@@ -441,13 +613,14 @@ def procesar_clip(origen: Path, cfg: dict[str, Any], estado: dict[str, Any]) -> 
         "titulo": seo["title"],
         "seo_source": seo["source"],
         "youtube_url": yt_url,
+        "cuota_estado": motivo_cuota,
         "fecha": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     guardar_estado(estado)
 
 
 def ejecutar_chequeo(cfg: dict[str, Any]) -> int:
-    print("=== VANTS Clipper · Chequeo de entorno ===")
+    print(f"=== VANTS Clipper v{APP_VERSION} · Chequeo de entorno ===")
     print(f"Python:          {sys.version.split()[0]}")
     print(f"ffmpeg:          {shutil.which('ffmpeg') or 'NO ENCONTRADO (winget install Gyan.FFmpeg)'}")
     print(f"streamlink:      {shutil.which('streamlink') or 'opcional (pip install streamlink)'}")
@@ -463,7 +636,16 @@ def ejecutar_chequeo(cfg: dict[str, Any]) -> int:
     yt_sec = BASE_DIR / str(((cfg.get("plataformas") or {}).get("youtube") or {}).get("client_secrets") or "yt_client_secret.json")
     print(f"YouTube OAuth:   {'OK (' + yt_sec.name + ')' if yt_sec.exists() else 'Falta ' + yt_sec.name}")
     vidiq_env = str((cfg.get("vidiq") or {}).get("env_token") or "VIDIQ_MCP_TOKEN")
-    print(f"vidIQ MCP Token: {'Configurado en env ' + vidiq_env if os.environ.get(vidiq_env) else 'No definido en env ' + vidiq_env + ' (usará SEO local)'}")
+    print(f"vidIQ MCP Token: {'Configurado en env ' + vidiq_env if os.environ.get(vidiq_env) else 'Usará proxy diario de membresía VANTS o SEO local'}")
+    cuota = consultar_cuota_vants(cfg)
+    if cuota:
+        s = cuota.get("shorts") or {}
+        v = cuota.get("vidiq") or {}
+        print(f"Plan VANTS hoy:  {cuota.get('label')} · Shorts {s.get('usados', 0)}/{s.get('limite', 0)} · vidIQ {v.get('usados', 0)}/{v.get('limite', 0)}")
+    else:
+        print("Plan VANTS hoy:  Sin VANTS_API_TOKEN (define VANTS_API_TOKEN para activar tu cupo diario de membresía)")
+    upd = comprobar_actualizacion(cfg, auto_instalar=False)
+    print(f"Auto-update:     v{upd['actual']} (última en GitHub: v{upd['ultima']})")
     return 0
 
 
@@ -476,7 +658,7 @@ def vigilar_cortex(cfg: dict[str, Any]) -> None:
         for c in carpetas:
             print(f"[Cortex] Vigilando carpeta: {c}")
 
-    print("[VANTS Clipper] Agente activo. Presiona Ctrl+C para detener.")
+    print(f"[VANTS Clipper v{APP_VERSION}] Agente activo. Presiona Ctrl+C para detener.")
     try:
         while True:
             carpetas = detectar_carpetas_cortex(cfg)
@@ -495,14 +677,27 @@ def vigilar_cortex(cfg: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="VANTS Clipper · Razer Cortex + VALORANT + vidIQ + YouTube Shorts")
-    parser.add_argument("--chequeo", action="store_true", help="Verifica ffmpeg, Razer Cortex, VALORANT, YouTube y vidIQ")
+    parser.add_argument("--chequeo", action="store_true", help="Verifica ffmpeg, Razer Cortex, VALORANT, YouTube, cuota VANTS y actualizaciones")
+    parser.add_argument("--check-update", action="store_true", help="Comprueba e instala si hay nueva versión en GitHub Releases")
+    parser.add_argument("--no-auto-update", action="store_true", help="Desactiva la comprobación automática de actualizaciones al iniciar")
     parser.add_argument("--launch-valorant", action="store_true", help="Lanza VALORANT (--launch-product=valorant --launch-patchline=live) y vigila clips")
     parser.add_argument("--test-convert", type=str, default="", help="Convierte un vídeo de prueba a 9:16 sin subirlo")
     args = parser.parse_args()
 
     cfg = cargar_config()
+    if args.check_update:
+        upd = comprobar_actualizacion(cfg, auto_instalar=True)
+        print(json.dumps(upd, ensure_ascii=False))
+        return 0
+
     if args.chequeo:
         return ejecutar_chequeo(cfg)
+
+    if not args.no_auto_update:
+        upd = comprobar_actualizacion(cfg, auto_instalar=True)
+        if upd.get("instalada"):
+            print("[Update] Cerrando para aplicar la nueva versión...")
+            return 0
 
     if args.test_convert:
         src = Path(args.test_convert).expanduser().resolve()
