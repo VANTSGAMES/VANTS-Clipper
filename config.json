@@ -1,8 +1,8 @@
 {
   "canal_kick": "feispla",
   "grabar_directo": true,
-  "worker_url": "https://vants-kick.vants.workers.dev",
-  "clipper_secret": "vk9_clip_Qk73mNe2Rt5A",
+  "worker_url": "https://vants.cc/kick",
+  "clipper_secret": "",
   "cortex_clip_dir": "C:\\Users\\feisp\\AppData\\Local\\Razer\\Razer Cortex\\GameClips\\feispla\\Videos\\VALORANT",
   "juego_default": "Valorant",
   "titulo_template": "{clip} · {juego} 🔥 #VANTS",
@@ -12,7 +12,7 @@
   "marca_fuente": "",
   "auto_update": true,
   "carpetas_extra": [],
-  "vants_integraciones_url": "https://vants-integraciones.vants.workers.dev",
+  "vants_integraciones_url": "https://int.vants.cc",
   "vidiq": {
     "activo": true,
     "env_token": "VIDIQ_MCP_TOKEN"
@@ -25,7 +25,7 @@
   "spike": { "umbral_min": 6, "multiplicador": 2.5, "cooldown_seg": 90 },
   "plataformas": {
     "youtube": { "activo": true, "client_secrets": "yt_client_secret.json", "token": "yt_token.json", "privacidad": "public" },
-    "tiktok": { "activo": true, "client_key": "awiko8q0l7qd8y75", "client_secret": "BUcIW6vkLukXPt4pnJXjsV3neQLK9gOl", "token": "tiktok_token.json", "privacidad": "SELF_ONLY" },
+    "tiktok": { "activo": true, "client_key": "awiko8q0l7qd8y75", "client_secret": "", "token": "tiktok_token.json", "privacidad": "SELF_ONLY" },
     "instagram": { "activo": false, "access_token": "", "r2_account_id": "", "r2_bucket": "", "r2_access_key": "", "r2_secret": "" }
   }
 }
