@@ -42,7 +42,7 @@ VERTICAL_DIR = BASE_DIR / "clips_verticales"
 
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".ts", ".m4v", ".webm"}
 VIDIQ_MCP_URL = "https://mcp.vidiq.com/mcp"
-VANTS_INT_URL = "https://vants-integraciones.vants.workers.dev"
+VANTS_INT_URL = "https://int.vants.cc"
 
 # Solo los 2 scopes mínimos de YouTube (evita el scope completo `youtube`).
 YOUTUBE_SCOPES = [
@@ -547,7 +547,7 @@ def notificar_vantsbot(url_youtube: str, titulo: str, juego: str, seo_source: st
     """Publica el evento clip.published a través del motor Cloudflare vantsbot -> VANTS-BUS -> Discord."""
     if not requests or not url_youtube:
         return False
-    bot_url = str(os.environ.get("VANTSBOT_URL") or cfg.get("vantsbot_url") or "https://vantsbot.vants.workers.dev").rstrip("/")
+    bot_url = str(os.environ.get("VANTSBOT_URL") or cfg.get("vantsbot_url") or "https://bot.vants.cc").rstrip("/")
     secret = (os.environ.get("VANTS_BOT_SECRET") or os.environ.get("CLIPPER_SECRET") or str(cfg.get("clipper_secret") or "")).strip()
     if not secret:
         return False
